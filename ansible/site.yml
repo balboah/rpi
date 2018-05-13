@@ -1,0 +1,101 @@
+- hosts: all
+  tasks:
+  - name: update packages
+    become: yes
+    apt:
+      name: "*"
+      state: latest
+  - name: enable camera
+    become: yes
+    copy:
+      src: config.txt
+      dest: /boot/config.txt
+      backup: no
+      owner: root
+      group: root
+      mode: 0755
+    register: bootconfig
+    tags:
+      - camera
+  - name: reboot the system when boot config changes
+    shell: 'sleep 1 && shutdown -r now "Reboot triggered by Ansible" && sleep 1'
+    async: 1
+    poll: 0
+    become: yes
+    when: bootconfig.changed
+    register: rebooting
+    tags:
+      - camera
+  - name: waiting for server to come back
+    local_action: wait_for host={{ ansible_default_ipv4.address }} port=22 state=started delay=30 timeout=60
+    when: rebooting.changed
+    tags:
+      - camera
+  - name: enable /dev/video0
+    become: yes
+    modprobe:
+      name: bcm2835-v4l2
+      state: present
+    tags:
+      - camera
+  - name: bcm2835-v4l2 on boot
+    become: yes
+    copy:
+      src: bcm2835-v4l2.conf
+      dest: /etc/modules-load.d/bcm2835-v4l2.conf
+      backup: no
+      owner: root
+      group: root
+      mode: 0755
+    tags:
+      - camera
+  - name: enable en_US.UTF-8
+    become: yes
+    replace:
+      path: /etc/locale.gen
+      regexp: '^# en_US.UTF-8'
+      replace: 'en_US.UTF-8'
+      backup: yes
+    register: locale
+    tags:
+      - locale
+  - name: generate locale
+    become: yes
+    command: locale-gen
+    when: locale.changed
+    tags:
+      - locale
+  - name: disable swap (required by kubelet)
+    become: yes
+    systemd:
+      name: dphys-swapfile
+      state: stopped
+      enabled: no
+    tags:
+      - swap
+
+- hosts: all
+  become: yes
+  tasks:
+    - name: uv4l apt key
+      apt_key:
+        url: http://www.linux-projects.org/listing/uv4l_repo/lpkey.asc
+        state: present
+    - name: uv4l repo
+      apt_repository:
+        repo: deb http://www.linux-projects.org/listing/uv4l_repo/raspbian/stretch stretch main
+        state: present
+        filename: uv4l
+    - name: install uv4l
+      apt:
+        name: "{{item}}"
+        update_cache: yes
+      with_items:
+        - uv4l
+        - uv4l-raspicam
+        - uv4l-raspicam-extras
+        - uv4l-server
+        - uv4l-uvc
+        - uv4l-mjpegstream
+  tags:
+    - uv4l

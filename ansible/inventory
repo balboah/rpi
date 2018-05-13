@@ -1,0 +1,6 @@
+[all:vars]
+ansible_connection=ssh
+ansible_user=pi
+
+[boards]
+10.80.0.13
