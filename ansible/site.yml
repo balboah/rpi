@@ -73,29 +73,31 @@
       enabled: no
     tags:
       - swap
-
-- hosts: all
-  become: yes
-  tasks:
-    - name: uv4l apt key
-      apt_key:
-        url: http://www.linux-projects.org/listing/uv4l_repo/lpkey.asc
-        state: present
-    - name: uv4l repo
-      apt_repository:
-        repo: deb http://www.linux-projects.org/listing/uv4l_repo/raspbian/stretch stretch main
-        state: present
-        filename: uv4l
-    - name: install uv4l
-      apt:
-        name: "{{item}}"
-        update_cache: yes
-      with_items:
-        - uv4l
-        - uv4l-raspicam
-        - uv4l-raspicam-extras
-        - uv4l-server
-        - uv4l-uvc
-        - uv4l-mjpegstream
-  tags:
-    - uv4l
+  - name: check if docker is installed
+    command: dpkg -s docker-ce
+    register: docker_check
+    ignore_errors: True
+    tags:
+      - docker
+  - name: download docker install helper
+    get_url:
+      url: https://get.docker.com
+      dest: /tmp/getdocker.sh
+      mode: 0755
+    tags:
+      - docker
+    when: docker_check is failed
+  - name: install docker
+    become: yes
+    shell: /tmp/getdocker.sh
+    tags:
+      - docker
+    when: docker_check is failed
+  - name: add {{ ansible_user }} to docker and video group
+    become: yes
+    user:
+      name: "{{ ansible_user }}"
+      groups: docker,video
+      append: yes
+    tags:
+      - docker
